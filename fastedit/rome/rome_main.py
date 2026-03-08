@@ -142,7 +142,11 @@ def execute_rome(
             batch_first
         )
         print("Right vector shape:", right_vector.shape)
-        right_vector = right_vector.to(torch.float16)
+
+        # Match dtype with model weights
+        model_dtype = next(model.parameters()).dtype
+        right_vector = right_vector.to(model_dtype)
+        left_vector = left_vector.to(model_dtype)
 
         with torch.no_grad():
             # Determine correct transposition of delta matrix
