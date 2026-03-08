@@ -53,10 +53,13 @@ def generate_fast(
     with torch.no_grad():
         generated_ids = model.generate(
             **inp_tok,
-            temperature=0.1,
+            temperature=0.7,
             top_k=top_k,
+            top_p=0.9,
             max_length=max_length,
             do_sample=True,
+            repetition_penalty=1.2,
+            no_repeat_ngram_size=3,
             streamer=streamer
         )
 
