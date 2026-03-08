@@ -7,7 +7,7 @@ from .rome import ROMEHyperParams, apply_rome_to_model
 from .utils.prints import print_loud
 from .utils.template import Template
 from .utils.mtloader import load_model_and_tokenizer
-from .utils.generate import generate_fast, generate_interactive
+from .utils.generate import generate_fast, generate_interactive, generate_chat
 
 
 def test_rome(
