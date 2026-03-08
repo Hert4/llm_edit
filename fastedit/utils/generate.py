@@ -10,7 +10,7 @@ def generate_interactive(
     tokenizer: PreTrainedTokenizer,
     template: Template,
     top_k: Optional[int] = 50,
-    max_new_tokens: Optional[int] = 100
+    max_new_tokens: Optional[int] = 512,
 ):
     r"""
     Puts generation in a loop. Allows users to repeatedly provide inputs
@@ -27,7 +27,14 @@ def generate_interactive(
 
         streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
         print("Output: ", end="", flush=True)
-        generate_chat(model, tokenizer, [query], top_k=top_k, max_new_tokens=max_new_tokens, streamer=streamer)[0]
+        generate_chat(
+            model,
+            tokenizer,
+            [query],
+            top_k=top_k,
+            max_new_tokens=max_new_tokens,
+            streamer=streamer,
+        )[0]
         print()
 
 
@@ -36,8 +43,8 @@ def generate_chat(
     tokenizer: PreTrainedTokenizer,
     queries: List[str],
     top_k: Optional[int] = 50,
-    max_new_tokens: Optional[int] = 100,
-    streamer: Optional[TextStreamer] = None
+    max_new_tokens: Optional[int] = 512,
+    streamer: Optional[TextStreamer] = None,
 ) -> List[str]:
     r"""
     Modern generation using apply_chat_template for chat models.
@@ -51,11 +58,12 @@ def generate_chat(
         messages = [{"role": "user", "content": query}]
 
         # Apply chat template if available
-        if hasattr(tokenizer, 'apply_chat_template') and tokenizer.chat_template is not None:
+        if (
+            hasattr(tokenizer, "apply_chat_template")
+            and tokenizer.chat_template is not None
+        ):
             input_text = tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True
+                messages, tokenize=False, add_generation_prompt=True
             )
         else:
             # Fallback for non-chat models
@@ -63,10 +71,7 @@ def generate_chat(
 
         # Tokenize
         inputs = tokenizer(
-            input_text,
-            return_tensors="pt",
-            padding=True,
-            truncation=True
+            input_text, return_tensors="pt", padding=True, truncation=True
         ).to(model.device)
 
         # Generate
@@ -87,8 +92,7 @@ def generate_chat(
 
         # Decode only new tokens
         response = tokenizer.decode(
-            outputs[0][inputs["input_ids"].shape[1]:],
-            skip_special_tokens=True
+            outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
         )
         responses.append(response)
 
@@ -102,8 +106,8 @@ def generate_fast(
     template: Template,
     n_gen_per_prompt: Optional[int] = 1,
     top_k: Optional[int] = 50,
-    max_length: Optional[int] = 200,
-    streamer: Optional[TextStreamer] = None
+    max_length: Optional[int] = 512,
+    streamer: Optional[TextStreamer] = None,
 ) -> List[str]:
     r"""
     Fast generation for evaluation. Uses simple prompting without chat template.
@@ -111,8 +115,12 @@ def generate_fast(
     """
 
     # Unroll prompts and tokenize
-    inp = [template.get_prompt(query) for query in queries for _ in range(n_gen_per_prompt)]
-    inp_tok = tokenizer(inp, padding=True, return_token_type_ids=False, return_tensors="pt").to(model.device)
+    inp = [
+        template.get_prompt(query) for query in queries for _ in range(n_gen_per_prompt)
+    ]
+    inp_tok = tokenizer(
+        inp, padding=True, return_token_type_ids=False, return_tensors="pt"
+    ).to(model.device)
 
     with torch.no_grad():
         generated_ids = model.generate(
@@ -129,9 +137,9 @@ def generate_fast(
         )
 
     responses = tokenizer.batch_decode(
-        generated_ids[:, inp_tok["input_ids"].size(1):],
+        generated_ids[:, inp_tok["input_ids"].size(1) :],
         skip_special_tokens=True,
-        clean_up_tokenization_spaces=True
+        clean_up_tokenization_spaces=True,
     )
 
     return responses
