@@ -25,12 +25,17 @@ def compute_v(
 
     print("Computing right vector (v)")
 
+    # Ensure target has leading space if needed
+    target = request["target"]
+    if not target.startswith(" "):
+        target = " " + target
+
     prompt_tok = tokenizer.tokenize(context_templates[0].format(request["prompt"]))
-    compl_tok = tokenizer.tokenize(context_templates[0].format(request["prompt"]) + request["target"])
+    compl_tok = tokenizer.tokenize(context_templates[0].format(request["prompt"]) + target)
     target_len = len(compl_tok) - len(prompt_tok)
 
     # Compile list of rewriting and KL x/y pairs
-    rewriting_prompts = [context.format(request["prompt"]) + request["target"] for context in context_templates]
+    rewriting_prompts = [context.format(request["prompt"]) + target for context in context_templates]
     kl_prompts = ["{} is a", "{}是一个"]
     all_prompts = rewriting_prompts + kl_prompts
 
