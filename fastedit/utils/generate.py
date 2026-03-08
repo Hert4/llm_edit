@@ -10,7 +10,7 @@ def generate_interactive(
     tokenizer: PreTrainedTokenizer,
     template: Template,
     top_k: Optional[int] = 50,
-    max_new_tokens: Optional[int] = 512,
+    max_new_tokens: Optional[int] = 1024,
 ):
     r"""
     Puts generation in a loop. Allows users to repeatedly provide inputs
@@ -43,7 +43,7 @@ def generate_chat(
     tokenizer: PreTrainedTokenizer,
     queries: List[str],
     top_k: Optional[int] = 50,
-    max_new_tokens: Optional[int] = 512,
+    max_new_tokens: Optional[int] = 1024,
     streamer: Optional[TextStreamer] = None,
 ) -> List[str]:
     r"""
@@ -106,7 +106,7 @@ def generate_fast(
     template: Template,
     n_gen_per_prompt: Optional[int] = 1,
     top_k: Optional[int] = 50,
-    max_length: Optional[int] = 512,
+    max_length: Optional[int] = 1024,
     streamer: Optional[TextStreamer] = None,
 ) -> List[str]:
     r"""

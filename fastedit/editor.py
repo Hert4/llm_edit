@@ -48,7 +48,7 @@ def test_rome(
 
     if len(queries) > 0:
         print_loud("Generating pre-update text")
-        pre_update_text = generate_chat(model_old, tokenizer, queries, max_new_tokens=100)
+        pre_update_text = generate_chat(model_old, tokenizer, queries, max_new_tokens=512)
         print("\n\n".join([queries[i] + "\n" + pre_update_text[i] for i in range(len(queries))]))
 
     print_loud(f"Applying rome to model")
@@ -63,7 +63,7 @@ def test_rome(
 
     if len(queries) > 0:
         print_loud("Generating post-update text")
-        post_update_text = generate_chat(model_new, tokenizer, queries, max_new_tokens=100)
+        post_update_text = generate_chat(model_new, tokenizer, queries, max_new_tokens=512)
         print("\n\n".join([queries[i] + "\n" + post_update_text[i] for i in range(len(queries))]))
 
     print_loud("Starting interactively generation interface")
