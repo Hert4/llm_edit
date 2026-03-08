@@ -60,7 +60,12 @@ def compute_v(
     # rewrite layer, i.e. hypothesized fact lookup location, will induce the
     # target token to be predicted at the final layer.
     n_embed = model.config.n_embd if hasattr(model.config, "n_embed") else model.config.hidden_size # for LLaMA model
-    delta = torch.zeros((n_embed,), requires_grad=True, device="cuda")
+
+    # Get model dtype for consistency
+    model_dtype = next(model.parameters()).dtype
+
+    # Use float32 for optimization, will cast when applying
+    delta = torch.zeros((n_embed,), requires_grad=True, device="cuda", dtype=torch.float32)
     target_init, kl_distr_init = None, None
 
     # Inserts new "delta" variable at the appropriate part of the computation
@@ -71,16 +76,22 @@ def compute_v(
         if target_init is None:
             print("Recording initial value of v*")
             # Initial value is recorded for the clean sentence
-            target_init = cur_out[0, lookup_idxs[0]].detach().clone()
+            target_init = cur_out[0, lookup_idxs[0]].detach().clone().float()
 
+        # Cast delta to model dtype before adding
+        delta_casted = delta.to(cur_out.dtype)
         for i, idx in enumerate(lookup_idxs):
-            cur_out[i, idx, :] += delta
+            cur_out[i, idx, :] += delta_casted
 
         return cur_out
 
-    # Optimizer
-    opt = torch.optim.Adam([delta], lr=hparams.v_lr, weight_decay=hparams.v_weight_decay)
+    # Optimizer with lower learning rate for stability
+    effective_lr = min(hparams.v_lr, 0.01)  # Cap learning rate at 0.01
+    opt = torch.optim.Adam([delta], lr=effective_lr, weight_decay=hparams.v_weight_decay)
     nethook.set_requires_grad(False, model)
+
+    best_loss = float('inf')
+    best_delta = None
 
     # Execute optimization
     for it in range(hparams.v_num_grad_steps):
@@ -117,11 +128,33 @@ def compute_v(
         kl_loss = torch.nn.functional.kl_div(kl_distr_init, kl_log_probs, log_target=True, reduction="batchmean")
         kl_loss *= hparams.kl_factor
         loss = nll_loss + kl_loss
-        print(f"loss {np.round(loss.item(), 3)} = "
-              f"{np.round(nll_loss.item(), 3)} + {np.round(kl_loss.item(), 3)} "
-              f"avg prob of [{request['target']}] {np.round(torch.exp(-nll_loss_each).mean().item(), 4)}")
 
-        if loss < 5e-3: # early-stopping
+        loss_val = loss.item()
+        nll_val = nll_loss.item()
+        kl_val = kl_loss.item()
+        prob_val = torch.exp(-nll_loss_each).mean().item()
+
+        # Check for NaN/Inf BEFORE printing and backprop
+        if np.isnan(loss_val) or np.isinf(loss_val):
+            print(f"step {it}: NaN/Inf detected, restoring best delta and reducing lr...")
+            if best_delta is not None:
+                with torch.no_grad():
+                    delta.copy_(best_delta)
+            # Reduce learning rate
+            for param_group in opt.param_groups:
+                param_group['lr'] *= 0.5
+            continue
+
+        print(f"loss {np.round(loss_val, 3)} = "
+              f"{np.round(nll_val, 3)} + {np.round(kl_val, 3)} "
+              f"avg prob of [{request['target']}] {np.round(prob_val, 4)}")
+
+        # Track best delta
+        if loss_val < best_loss:
+            best_loss = loss_val
+            best_delta = delta.detach().clone()
+
+        if loss_val < 5e-3: # early-stopping
             break
 
         if it == hparams.v_num_grad_steps - 1:
@@ -129,6 +162,17 @@ def compute_v(
 
         # Backpropagate
         loss.backward()
+
+        # Gradient clipping
+        grad_norm = torch.nn.utils.clip_grad_norm_([delta], max_norm=1.0)
+
+        # Check for NaN in gradients
+        if delta.grad is not None:
+            if torch.isnan(delta.grad).any() or torch.isinf(delta.grad).any():
+                print(f"step {it}: NaN/Inf gradient, skipping update...")
+                delta.grad.zero_()
+                continue
+
         opt.step()
 
         # Project within L2 ball
@@ -137,7 +181,11 @@ def compute_v(
             with torch.no_grad():
                 delta[...] = delta * max_norm / delta.norm()
 
-    target = target_init + delta
+    # Use best delta if current is NaN
+    if best_delta is not None and (torch.isnan(delta).any() or torch.isinf(delta).any()):
+        delta = best_delta
+
+    target = target_init + delta.float()
 
     # Retrieve cur_input, the current input to the 2nd MLP layer, and
     # cur_output, the original output of the 2nd MLP layer.
@@ -154,12 +202,16 @@ def compute_v(
         batch_first=batch_first
     )
 
+    # Cast to float32 for computation
+    cur_input = cur_input.float()
+    cur_output = cur_output.float()
+
     # Solving the linear system to compute the right vector
-    right_vector = (target - cur_output) / torch.dot(cur_input, left_vector)
+    right_vector = (target - cur_output) / torch.dot(cur_input, left_vector.float())
     print(f"Delta norm: {np.round((target - cur_output).norm().item(), 3)}")
     print(f"Change in target norm: {np.round(target_init.norm().item(), 3)} to {np.round(target.norm().item(), 3)} => "
           f"{np.round((target.norm() - target_init.norm()).item(), 3)}")
-    print(f"Division Factor: {np.round(torch.dot(cur_input, left_vector).item(), 3)}")
+    print(f"Division Factor: {np.round(torch.dot(cur_input, left_vector.float()).item(), 3)}")
     print(f"Right vector norm: {np.round(right_vector.norm().item(), 3)}")
 
     return right_vector

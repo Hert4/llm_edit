@@ -30,7 +30,7 @@ def load_model_and_tokenizer(
     model = AutoModelForCausalLM.from_pretrained(
         model,
         low_cpu_mem_usage=True,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,  # Use bfloat16 for better numerical stability
         trust_remote_code=True
     ).cuda()
 
